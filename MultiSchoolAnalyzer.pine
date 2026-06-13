@@ -1,0 +1,349 @@
+//@version=6
+// ============================================================================
+//  Multi-School Stock Analyzer  —  مُحلِّل الأسهم متعدد المدارس
+//  مؤشر احترافي شامل لمنصة TradingView يجمع مدارس التحليل الفني:
+//    1) الاتجاه (Trend)            - شريط المتوسطات + اتجاه عام
+//    2) الزخم (Momentum)           - RSI / MACD / Stochastic
+//    3) التقلب (Volatility)        - Bollinger Bands + ATR
+//    4) الدعم والمقاومة (S/R)      - Pivot High/Low تلقائي
+//    5) فيبوناتشي (Fibonacci)      - ارتداد آلي من آخر سوينج
+//    6) إيشيموكو (Ichimoku Cloud)
+//    7) الحجم (Volume)             - انفجارات الحجم + OBV
+//    8) نماذج الشموع (Candles)     - ابتلاع / مطرقة / دوجي ...
+//    9) أموال المؤسسات (SMC)       - هيكل السوق / كسر الهيكل BOS
+//   10) لوحة قرار مجمّعة (Dashboard) بنتيجة مرجّحة Buy/Sell
+//
+//  ملاحظة: مؤشر مساعد للقرار وليس توصية مالية. اختبره قبل الاستخدام الحقيقي.
+// ============================================================================
+
+indicator("Multi-School Stock Analyzer • محلل المدارس", shorttitle="MSA • محلل", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
+
+// ============================================================================
+//  إعدادات عامة
+// ============================================================================
+GRP_GEN  = "⚙️ عام"
+showDash    = input.bool(true,  "إظهار لوحة المعلومات",      group=GRP_GEN)
+dashPos     = input.string("أعلى اليمين", "موضع اللوحة", options=["أعلى اليمين","أعلى اليسار","أسفل اليمين","أسفل اليسار"], group=GRP_GEN)
+themeDark   = input.bool(true,  "ثيم داكن",                   group=GRP_GEN)
+
+// ألوان الثيم
+cUp    = color.new(#26a69a, 0)
+cDn    = color.new(#ef5350, 0)
+cNeu   = color.new(#787b86, 0)
+cTxt   = themeDark ? color.white : color.black
+cBgDash= themeDark ? color.new(#1e222d, 10) : color.new(#ffffff, 10)
+
+// ============================================================================
+//  1) الاتجاه  —  Trend (EMA Ribbon)
+// ============================================================================
+GRP_TR = "📈 1) الاتجاه"
+showTrend = input.bool(true,  "تفعيل مدرسة الاتجاه", group=GRP_TR)
+emaFast   = input.int(20,  "EMA سريع",  minval=1, group=GRP_TR)
+emaMid    = input.int(50,  "EMA متوسط", minval=1, group=GRP_TR)
+emaSlow   = input.int(200, "EMA بطيء",  minval=1, group=GRP_TR)
+
+ema1 = ta.ema(close, emaFast)
+ema2 = ta.ema(close, emaMid)
+ema3 = ta.ema(close, emaSlow)
+
+trendUp   = close > ema1 and ema1 > ema2 and ema2 > ema3
+trendDn   = close < ema1 and ema1 < ema2 and ema2 < ema3
+// نقاط الاتجاه: +1 صاعد، -1 هابط، 0 عرضي
+trendScore = trendUp ? 1 : trendDn ? -1 : (close > ema3 ? 1 : close < ema3 ? -1 : 0)
+
+plot(showTrend ? ema1 : na, "EMA سريع",  color=color.new(#42a5f5, 0), linewidth=1)
+plot(showTrend ? ema2 : na, "EMA متوسط", color=color.new(#ffa726, 0), linewidth=2)
+plot(showTrend ? ema3 : na, "EMA بطيء",  color=color.new(#ab47bc, 0), linewidth=3)
+
+// تعبئة بين السريع والمتوسط لإظهار قوة الاتجاه
+p1 = plot(showTrend ? ema1 : na, display=display.none)
+p2 = plot(showTrend ? ema2 : na, display=display.none)
+fill(p1, p2, color=ema1 > ema2 ? color.new(#26a69a, 85) : color.new(#ef5350, 85))
+
+// ============================================================================
+//  2) الزخم  —  Momentum (RSI + MACD + Stochastic)
+// ============================================================================
+GRP_MO = "⚡ 2) الزخم"
+showMom   = input.bool(true, "تفعيل مدرسة الزخم", group=GRP_MO)
+rsiLen    = input.int(14, "RSI طول",    minval=1, group=GRP_MO)
+rsiOB     = input.int(70, "RSI تشبع شرائي", group=GRP_MO)
+rsiOS     = input.int(30, "RSI تشبع بيعي", group=GRP_MO)
+
+rsi  = ta.rsi(close, rsiLen)
+[macdLine, signalLine, _hist] = ta.macd(close, 12, 26, 9)
+k = ta.stoch(close, high, low, 14)
+stochK = ta.sma(k, 3)
+
+momRsi   = rsi > 55 ? 1 : rsi < 45 ? -1 : 0
+momMacd  = macdLine > signalLine ? 1 : -1
+momStoch = stochK > 50 ? 1 : -1
+momScore = momRsi + momMacd + momStoch        // المدى -3..+3
+momNorm  = momScore > 0 ? 1 : momScore < 0 ? -1 : 0
+
+// إشارات تشبع على الشارت
+plotshape(showMom and ta.crossunder(rsi, rsiOB) ? high : na, "تشبع شرائي", shape.triangledown, location.abovebar, color.new(#ef5350,0), size=size.tiny)
+plotshape(showMom and ta.crossover(rsi, rsiOS) ? low : na,  "تشبع بيعي",  shape.triangleup,   location.belowbar, color.new(#26a69a,0), size=size.tiny)
+
+// ============================================================================
+//  3) التقلب  —  Volatility (Bollinger Bands + ATR)
+// ============================================================================
+GRP_VO = "🌊 3) التقلب"
+showBB  = input.bool(true, "تفعيل بولينجر باند", group=GRP_VO)
+bbLen   = input.int(20, "BB طول", minval=1, group=GRP_VO)
+bbMult  = input.float(2.0, "BB انحراف", step=0.1, group=GRP_VO)
+
+bbBasis = ta.sma(close, bbLen)
+bbDev   = bbMult * ta.stdev(close, bbLen)
+bbUpper = bbBasis + bbDev
+bbLower = bbBasis - bbDev
+atr     = ta.atr(14)
+
+bu = plot(showBB ? bbUpper : na, "BB علوي", color=color.new(#787b86, 40))
+bl = plot(showBB ? bbLower : na, "BB سفلي", color=color.new(#787b86, 40))
+plot(showBB ? bbBasis : na, "BB وسط", color=color.new(#787b86, 60))
+fill(bu, bl, color=color.new(#787b86, 92))
+
+// نقاط التقلب: قرب الباند السفلي = فرصة شراء، العلوي = حذر
+volScore = close <= bbLower ? 1 : close >= bbUpper ? -1 : 0
+
+// ============================================================================
+//  4) الدعم والمقاومة  —  Support / Resistance (Pivots)
+// ============================================================================
+GRP_SR = "🧱 4) الدعم والمقاومة"
+showSR  = input.bool(true, "تفعيل الدعم/المقاومة", group=GRP_SR)
+srLen   = input.int(15, "حساسية البيفوت", minval=2, group=GRP_SR)
+srMax   = input.int(4,  "عدد الخطوط لكل جهة", minval=1, maxval=10, group=GRP_SR)
+
+ph = ta.pivothigh(high, srLen, srLen)
+pl = ta.pivotlow(low,  srLen, srLen)
+
+var array<line>  resLines = array.new<line>()
+var array<line>  supLines = array.new<line>()
+
+f_pushLine(arr, price, col) =>
+    ln = line.new(bar_index - srLen, price, bar_index, price, color=col, width=1, extend=extend.right, style=line.style_dashed)
+    array.push(arr, ln)
+    if array.size(arr) > srMax
+        line.delete(array.shift(arr))
+
+if showSR and not na(ph)
+    f_pushLine(resLines, ph, color.new(#ef5350, 20))
+if showSR and not na(pl)
+    f_pushLine(supLines, pl, color.new(#26a69a, 20))
+
+// أقرب دعم/مقاومة لتقييم الموضع داخل القناة
+nearestRes = bbUpper
+nearestSup = bbLower
+if array.size(resLines) > 0
+    nearestRes := line.get_price(array.get(resLines, array.size(resLines)-1), bar_index)
+if array.size(supLines) > 0
+    nearestSup := line.get_price(array.get(supLines, array.size(supLines)-1), bar_index)
+
+// ============================================================================
+//  5) فيبوناتشي  —  Fibonacci (آلي من آخر سوينج)
+// ============================================================================
+GRP_FB = "🌀 5) فيبوناتشي"
+showFib = input.bool(true, "تفعيل فيبوناتشي الآلي", group=GRP_FB)
+fibLook = input.int(60, "نطاق البحث عن السوينج", minval=10, group=GRP_FB)
+
+var float swHigh = na
+var float swLow  = na
+var int   swHiIdx = na
+var int   swLoIdx = na
+
+hh = ta.highest(high, fibLook)
+ll = ta.lowest(low,  fibLook)
+if barstate.islast
+    swHigh := hh
+    swLow  := ll
+
+var array<line>  fibLines  = array.new<line>()
+var array<label> fibLabels = array.new<label>()
+
+f_clearFib() =>
+    while array.size(fibLines) > 0
+        line.delete(array.shift(fibLines))
+    while array.size(fibLabels) > 0
+        label.delete(array.shift(fibLabels))
+
+if showFib and barstate.islast and not na(swHigh) and not na(swLow)
+    f_clearFib()
+    rng = swHigh - swLow
+    levels = array.from(0.0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0)
+    cols   = array.from(color.new(#ef5350,30), color.new(#ffa726,40), color.new(#ffee58,40), color.new(#66bb6a,40), color.new(#26c6da,40), color.new(#42a5f5,40), color.new(#26a69a,30))
+    for i = 0 to array.size(levels)-1
+        lv  = array.get(levels, i)
+        prc = swHigh - rng * lv
+        ln  = line.new(bar_index - fibLook, prc, bar_index + 10, prc, color=array.get(cols, i), style=line.style_dotted, width=1)
+        lb  = label.new(bar_index + 10, prc, str.tostring(lv*100, "#.0") + "%  " + str.tostring(prc, format.mintick), style=label.style_label_left, color=color.new(color.black,100), textcolor=array.get(cols,i), size=size.small)
+        array.push(fibLines, ln)
+        array.push(fibLabels, lb)
+
+// ============================================================================
+//  6) إيشيموكو  —  Ichimoku Cloud
+// ============================================================================
+GRP_IC = "☁️ 6) إيشيموكو"
+showIchi = input.bool(false, "تفعيل سحابة إيشيموكو", group=GRP_IC)
+icoConv  = input.int(9,  "Tenkan",  group=GRP_IC)
+icoBase  = input.int(26, "Kijun",   group=GRP_IC)
+icoLag   = input.int(52, "Senkou B", group=GRP_IC)
+
+f_donchian(len) => math.avg(ta.lowest(len), ta.highest(len))
+tenkan  = f_donchian(icoConv)
+kijun   = f_donchian(icoBase)
+spanA   = math.avg(tenkan, kijun)
+spanB   = f_donchian(icoLag)
+
+plot(showIchi ? tenkan : na, "Tenkan", color=color.new(#2962ff,0))
+plot(showIchi ? kijun  : na, "Kijun",  color=color.new(#b71c1c,0))
+sa = plot(showIchi ? spanA : na, "Senkou A", color=color.new(#26a69a,50), offset=icoBase)
+sb = plot(showIchi ? spanB : na, "Senkou B", color=color.new(#ef5350,50), offset=icoBase)
+fill(sa, sb, color=spanA > spanB ? color.new(#26a69a, 85) : color.new(#ef5350, 85))
+
+ichiScore = close > spanA and close > spanB ? 1 : close < spanA and close < spanB ? -1 : 0
+
+// ============================================================================
+//  7) الحجم  —  Volume (انفجار الحجم + OBV)
+// ============================================================================
+GRP_VL = "📊 7) الحجم"
+showVol  = input.bool(true, "تفعيل تحليل الحجم", group=GRP_VL)
+volMult  = input.float(2.0, "عتبة انفجار الحجم", step=0.1, group=GRP_VL)
+
+volAvg   = ta.sma(volume, 20)
+volSpike = volume > volAvg * volMult
+obv      = ta.cum(math.sign(close - close[1]) * volume)
+obvRising = obv > ta.sma(obv, 20)
+volScoreV = (volSpike and close > open ? 1 : 0) + (obvRising ? 1 : -1)
+volNorm   = volScoreV > 0 ? 1 : volScoreV < 0 ? -1 : 0
+
+plotshape(showVol and volSpike and close > open ? low : na, "حجم شراء", shape.circle, location.belowbar, color.new(#26a69a,0), size=size.tiny)
+plotshape(showVol and volSpike and close < open ? high : na, "حجم بيع", shape.circle, location.abovebar, color.new(#ef5350,0), size=size.tiny)
+
+// ============================================================================
+//  8) نماذج الشموع  —  Candlestick Patterns
+// ============================================================================
+GRP_CN = "🕯️ 8) نماذج الشموع"
+showCandle = input.bool(true, "تفعيل نماذج الشموع", group=GRP_CN)
+
+body   = math.abs(close - open)
+rngTot = high - low
+upWick = high - math.max(close, open)
+dnWick = math.min(close, open) - low
+
+bullEngulf = close > open and close[1] < open[1] and close >= open[1] and open <= close[1]
+bearEngulf = close < open and close[1] > open[1] and close <= open[1] and open >= close[1]
+hammer     = rngTot > 0 and dnWick > body * 2 and upWick < body and close > open
+shootStar  = rngTot > 0 and upWick > body * 2 and dnWick < body and close < open
+doji       = rngTot > 0 and body <= rngTot * 0.1
+
+candleScore = (bullEngulf or hammer ? 1 : 0) + (bearEngulf or shootStar ? -1 : 0)
+
+if showCandle
+    if bullEngulf
+        label.new(bar_index, low, "ابتلاع\nشرائي", yloc=yloc.belowbar, style=label.style_label_up, color=color.new(#26a69a,20), textcolor=color.white, size=size.tiny)
+    if bearEngulf
+        label.new(bar_index, high, "ابتلاع\nبيعي", yloc=yloc.abovebar, style=label.style_label_down, color=color.new(#ef5350,20), textcolor=color.white, size=size.tiny)
+    if hammer
+        label.new(bar_index, low, "مطرقة", yloc=yloc.belowbar, style=label.style_label_up, color=color.new(#66bb6a,20), textcolor=color.white, size=size.tiny)
+    if shootStar
+        label.new(bar_index, high, "شهاب", yloc=yloc.abovebar, style=label.style_label_down, color=color.new(#ef5350,20), textcolor=color.white, size=size.tiny)
+    if doji
+        label.new(bar_index, high, "دوجي", yloc=yloc.abovebar, style=label.style_label_down, color=color.new(#787b86,20), textcolor=color.white, size=size.tiny)
+
+// ============================================================================
+//  9) أموال المؤسسات  —  Smart Money / هيكل السوق (BOS)
+// ============================================================================
+GRP_SM = "💰 9) هيكل السوق SMC"
+showSMC = input.bool(true, "تفعيل هيكل السوق", group=GRP_SM)
+smcLen  = input.int(10, "حساسية الهيكل", minval=2, group=GRP_SM)
+
+smcPH = ta.pivothigh(high, smcLen, smcLen)
+smcPL = ta.pivotlow(low,  smcLen, smcLen)
+var float lastPH = na
+var float lastPL = na
+if not na(smcPH)
+    lastPH := smcPH
+if not na(smcPL)
+    lastPL := smcPL
+
+bosUp   = not na(lastPH) and ta.crossover(close, lastPH)
+bosDn   = not na(lastPL) and ta.crossunder(close, lastPL)
+var int smcBias = 0
+if bosUp
+    smcBias := 1
+if bosDn
+    smcBias := -1
+
+if showSMC and bosUp
+    label.new(bar_index, high, "BOS▲", yloc=yloc.abovebar, style=label.style_label_down, color=color.new(#26a69a,10), textcolor=color.white, size=size.small)
+if showSMC and bosDn
+    label.new(bar_index, low, "BOS▼", yloc=yloc.belowbar, style=label.style_label_up, color=color.new(#ef5350,10), textcolor=color.white, size=size.small)
+
+// ============================================================================
+//  10) النتيجة المجمّعة + لوحة المعلومات
+// ============================================================================
+// تجميع نقاط كل مدرسة (مرجّحة)
+wTrend  = showTrend ? trendScore : 0
+wMom    = showMom   ? momNorm    : 0
+wVol    = showBB    ? volScore   : 0
+wIchi   = showIchi  ? ichiScore  : 0
+wVolm   = showVol   ? volNorm    : 0
+wCandle = showCandle? (candleScore > 0 ? 1 : candleScore < 0 ? -1 : 0) : 0
+wSMC    = showSMC   ? smcBias    : 0
+
+totalScore = wTrend*2 + wMom*1.5 + wVol + wIchi + wVolm + wCandle + wSMC*1.5
+maxScore   = 2 + 1.5 + 1 + (showIchi?1:0) + 1 + 1 + 1.5
+scorePct   = maxScore != 0 ? totalScore / maxScore * 100 : 0
+
+verdict = scorePct >=  50 ? "شراء قوي 🟢" :
+          scorePct >=  20 ? "شراء 🟢" :
+          scorePct <= -50 ? "بيع قوي 🔴" :
+          scorePct <= -20 ? "بيع 🔴" : "حياد ⚪"
+verdictCol = scorePct >= 20 ? cUp : scorePct <= -20 ? cDn : cNeu
+
+f_sigTxt(s) => s > 0 ? "صاعد ▲" : s < 0 ? "هابط ▼" : "حياد ●"
+f_sigCol(s) => s > 0 ? cUp     : s < 0 ? cDn     : cNeu
+
+dashPosition = dashPos == "أعلى اليمين"  ? position.top_right :
+               dashPos == "أعلى اليسار"  ? position.top_left  :
+               dashPos == "أسفل اليمين"  ? position.bottom_right : position.bottom_left
+
+if showDash and barstate.islast
+    var table t = table.new(dashPosition, 2, 11, bgcolor=cBgDash, border_color=color.new(#434651,40), border_width=1, frame_color=color.new(#434651,0), frame_width=1)
+    table.cell(t, 0, 0, "🏛️ محلل المدارس", text_color=cTxt, text_size=size.normal, bgcolor=color.new(#2962ff,30))
+    table.cell(t, 1, 0, verdict, text_color=color.white, text_size=size.normal, bgcolor=verdictCol)
+
+    table.cell(t, 0, 1, "الاتجاه",       text_color=cTxt, text_size=size.small)
+    table.cell(t, 1, 1, f_sigTxt(wTrend), text_color=f_sigCol(wTrend), text_size=size.small)
+    table.cell(t, 0, 2, "الزخم",         text_color=cTxt, text_size=size.small)
+    table.cell(t, 1, 2, f_sigTxt(wMom),   text_color=f_sigCol(wMom),  text_size=size.small)
+    table.cell(t, 0, 3, "التقلب/بولينجر", text_color=cTxt, text_size=size.small)
+    table.cell(t, 1, 3, f_sigTxt(wVol),   text_color=f_sigCol(wVol),  text_size=size.small)
+    table.cell(t, 0, 4, "إيشيموكو",      text_color=cTxt, text_size=size.small)
+    table.cell(t, 1, 4, showIchi ? f_sigTxt(wIchi) : "معطّل", text_color=showIchi?f_sigCol(wIchi):cNeu, text_size=size.small)
+    table.cell(t, 0, 5, "الحجم",         text_color=cTxt, text_size=size.small)
+    table.cell(t, 1, 5, f_sigTxt(wVolm),  text_color=f_sigCol(wVolm), text_size=size.small)
+    table.cell(t, 0, 6, "الشموع",        text_color=cTxt, text_size=size.small)
+    table.cell(t, 1, 6, f_sigTxt(wCandle),text_color=f_sigCol(wCandle),text_size=size.small)
+    table.cell(t, 0, 7, "هيكل السوق",    text_color=cTxt, text_size=size.small)
+    table.cell(t, 1, 7, f_sigTxt(wSMC),   text_color=f_sigCol(wSMC),  text_size=size.small)
+
+    table.cell(t, 0, 8, "RSI",  text_color=cTxt, text_size=size.small)
+    table.cell(t, 1, 8, str.tostring(rsi, "#.0"), text_color=rsi>rsiOB?cDn:rsi<rsiOS?cUp:cTxt, text_size=size.small)
+    table.cell(t, 0, 9, "النتيجة", text_color=cTxt, text_size=size.small, bgcolor=color.new(#434651,60))
+    table.cell(t, 1, 9, str.tostring(scorePct, "#") + "%", text_color=color.white, text_size=size.small, bgcolor=verdictCol)
+    table.cell(t, 0, 10, "السعر", text_color=cTxt, text_size=size.small)
+    table.cell(t, 1, 10, str.tostring(close, format.mintick), text_color=cTxt, text_size=size.small)
+
+// ============================================================================
+//  التنبيهات  —  Alerts
+// ============================================================================
+buySignal  = ta.crossover(scorePct,  20)
+sellSignal = ta.crossunder(scorePct, -20)
+alertcondition(buySignal,  "إشارة شراء مجمّعة",  "🟢 إشارة شراء: تجمّع مدارس التحليل على الصعود")
+alertcondition(sellSignal, "إشارة بيع مجمّعة",   "🔴 إشارة بيع: تجمّع مدارس التحليل على الهبوط")
+alertcondition(bosUp,      "كسر هيكل صاعد BOS",  "BOS▲ كسر هيكل صاعد")
+alertcondition(bosDn,      "كسر هيكل هابط BOS",  "BOS▼ كسر هيكل هابط")
+
+plotshape(buySignal  ? low  : na, "إشارة شراء", shape.labelup,   location.belowbar, cUp, text="شراء",  textcolor=color.white, size=size.small)
+plotshape(sellSignal ? high : na, "إشارة بيع",  shape.labeldown, location.abovebar, cDn, text="بيع",   textcolor=color.white, size=size.small)
