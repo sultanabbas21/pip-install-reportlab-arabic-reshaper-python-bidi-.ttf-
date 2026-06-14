@@ -80,9 +80,11 @@ momStoch = stochK > 50 ? 1 : -1
 momScore = momRsi + momMacd + momStoch        // المدى -3..+3
 momNorm  = momScore > 0 ? 1 : momScore < 0 ? -1 : 0
 
-// إشارات تشبع على الشارت
-plotshape(showMom and ta.crossunder(rsi, rsiOB) ? high : na, "تشبع شرائي", shape.triangledown, location.abovebar, color.new(#ef5350,0), size=size.tiny)
-plotshape(showMom and ta.crossover(rsi, rsiOS) ? low : na,  "تشبع بيعي",  shape.triangleup,   location.belowbar, color.new(#26a69a,0), size=size.tiny)
+// إشارات تشبع على الشارت (نحسب التقاطعات في متغيرات عامة لضمان تنفيذها كل شمعة)
+rsiCrossDn = ta.crossunder(rsi, rsiOB)
+rsiCrossUp = ta.crossover(rsi, rsiOS)
+plotshape(showMom and rsiCrossDn ? high : na, "تشبع شرائي", shape.triangledown, location.abovebar, color.new(#ef5350,0), size=size.tiny)
+plotshape(showMom and rsiCrossUp ? low : na,  "تشبع بيعي",  shape.triangleup,   location.belowbar, color.new(#26a69a,0), size=size.tiny)
 
 // ============================================================================
 //  3) التقلب  —  Volatility (Bollinger Bands + ATR)
@@ -255,8 +257,10 @@ if not na(smcPH)
 if not na(smcPL)
     lastPL := smcPL
 
-bosUp   = not na(lastPH) and ta.crossover(close, lastPH)
-bosDn   = not na(lastPL) and ta.crossunder(close, lastPL)
+crossPH = ta.crossover(close, lastPH)
+crossPL = ta.crossunder(close, lastPL)
+bosUp   = not na(lastPH) and crossPH
+bosDn   = not na(lastPL) and crossPL
 var int smcBias = 0
 if bosUp
     smcBias := 1
@@ -464,8 +468,16 @@ if showHarm and barstate.islast
     harmBias := 0
     n = array.size(swP)
     if n >= 5
-        [Xp, Ap, Bp, Cp, Dp] = [array.get(swP, n-5), array.get(swP, n-4), array.get(swP, n-3), array.get(swP, n-2), array.get(swP, n-1)]
-        [Xx, Ax, Bx, Cx, Dx] = [array.get(swX, n-5), array.get(swX, n-4), array.get(swX, n-3), array.get(swX, n-2), array.get(swX, n-1)]
+        Xp = array.get(swP, n-5)
+        Ap = array.get(swP, n-4)
+        Bp = array.get(swP, n-3)
+        Cp = array.get(swP, n-2)
+        Dp = array.get(swP, n-1)
+        Xx = array.get(swX, n-5)
+        Ax = array.get(swX, n-4)
+        Bx = array.get(swX, n-3)
+        Cx = array.get(swX, n-2)
+        Dx = array.get(swX, n-1)
         XA = math.abs(Ap - Xp)
         AB = math.abs(Bp - Ap)
         BC = math.abs(Cp - Bp)
@@ -578,8 +590,10 @@ if showCorr and barstate.islast and not na(corrHigh) and not na(corrLow) and (in
     array.push(corrZone, bx)
 
 // نهاية التصحيح: استئناف الاتجاه الأصلي
-corrEndUp = inCorrUp and not na(corrHigh) and ta.crossover(close, corrHigh)
-corrEndDn = inCorrDn and not na(corrLow)  and ta.crossunder(close, corrLow)
+crossCorrHi = ta.crossover(close, corrHigh)
+crossCorrLo = ta.crossunder(close, corrLow)
+corrEndUp = inCorrUp and not na(corrHigh) and crossCorrHi
+corrEndDn = inCorrDn and not na(corrLow)  and crossCorrLo
 if corrEndUp
     inCorrUp := false
     infoCorr := "انتهى التصحيح ✅ استئناف صعود"
@@ -611,9 +625,12 @@ if showCP and barstate.islast
     cpBias := 0
     // قمة/قاع مزدوج: آخر 3 نقاط (أسماء dt* لتفادي التعارض مع متغيرات الرسم العامة)
     if n >= 3
-        [dtP1, dtP2] = [array.get(swP, n-3), array.get(swP, n-1)]
-        [dtX1, dtX2] = [array.get(swX, n-3), array.get(swX, n-1)]
-        [dtH1, dtH2] = [array.get(swH, n-3), array.get(swH, n-1)]
+        dtP1 = array.get(swP, n-3)
+        dtP2 = array.get(swP, n-1)
+        dtX1 = array.get(swX, n-3)
+        dtX2 = array.get(swX, n-1)
+        dtH1 = array.get(swH, n-3)
+        dtH2 = array.get(swH, n-1)
         if dtH1 and dtH2 and f_near(dtP2, dtP1, cpTol)
             array.push(cpLines, line.new(dtX1, math.max(dtP1, dtP2), dtX2, math.max(dtP1, dtP2), color=color.new(#ef5350, 0), width=2, style=line.style_dashed))
             array.push(cpLab, label.new(dtX2, math.max(dtP1, dtP2), "قمة مزدوجة ⛰️⛰️", style=label.style_label_down, color=color.new(#ef5350, 10), textcolor=color.white, size=size.small))
@@ -626,8 +643,13 @@ if showCP and barstate.islast
             cpBias := 1
     // رأس وكتفين / مقلوب: آخر 5 نقاط
     if n >= 5 and infoPattern == "—"
-        [a, b, c, d, e] = [array.get(swP, n-5), array.get(swP, n-4), array.get(swP, n-3), array.get(swP, n-2), array.get(swP, n-1)]
-        [ax, ex] = [array.get(swX, n-5), array.get(swX, n-1)]
+        a = array.get(swP, n-5)
+        b = array.get(swP, n-4)
+        c = array.get(swP, n-3)
+        d = array.get(swP, n-2)
+        e = array.get(swP, n-1)
+        ax = array.get(swX, n-5)
+        ex = array.get(swX, n-1)
         ha = array.get(swH, n-5)
         if ha and c > a and c > e and f_near(e, a, cpTol + 0.02)
             array.push(cpLab, label.new(ex, c, "رأس وكتفين 👤", style=label.style_label_down, color=color.new(#ef5350, 10), textcolor=color.white, size=size.small))
