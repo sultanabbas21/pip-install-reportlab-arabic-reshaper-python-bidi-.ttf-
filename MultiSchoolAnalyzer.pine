@@ -686,6 +686,79 @@ if showCP and barstate.islast
             infoPattern := "مثلث متقارب"
 
 // ============================================================================
+//  🅦 مدرسة وايكوف  —  Wyckoff Method (نطاق التداول + الأحداث الرئيسية)
+// ============================================================================
+GRP_WY   = "🅦 وايكوف"
+showWyk  = input.bool(true, "تفعيل مدرسة وايكوف", group=GRP_WY)
+wyLen    = input.int(30, "طول نطاق التداول", minval=10, group=GRP_WY)
+wyVolMlt = input.float(1.8, "عتبة الحجم العالي", step=0.1, group=GRP_WY)
+
+// حسابات أساسية (كلها عامة لتُنفّذ كل شمعة)
+wyVolAvg = ta.sma(volume, 20)
+wyAtr    = ta.atr(10)
+trHigh   = ta.highest(high, wyLen)[1]     // مقاومة النطاق (بدون الشمعة الحالية)
+trLow    = ta.lowest(low,  wyLen)[1]      // دعم النطاق
+trHiFull = ta.highest(high, wyLen)
+trLoFull = ta.lowest(low,  wyLen)
+wyHiVol  = volume > wyVolAvg * wyVolMlt
+wideBar  = (high - low) > wyAtr * 1.5
+
+// الأحداث الرئيسية في منهج وايكوف
+wySpring   = showWyk and low < trLow  and close > trLow  and close > open                                  // اختراق كاذب لأسفل ⇒ صعودي
+wyUpthrust = showWyk and high > trHigh and close < trHigh and close < open                                 // اختراق كاذب لأعلى ⇒ هبوطي
+wySC       = showWyk and wyHiVol and wideBar and close < open and (close - low) > (high - low) * 0.5 and low <= trLoFull   // ذروة بيع
+wyBC       = showWyk and wyHiVol and wideBar and close > open and (high - close) > (high - low) * 0.5 and high >= trHiFull  // ذروة شراء
+wySOS      = showWyk and close > trHigh and close > open and wyHiVol and wideBar                           // علامة قوة (كسر صاعد بحجم)
+wySOW      = showWyk and close < trLow  and close < open and wyHiVol and wideBar                           // علامة ضعف (كسر هابط بحجم)
+
+var int wyBias = 0
+var string infoWyk = "—"
+if wySC
+    wyBias := 1
+    infoWyk := "ذروة بيع SC"
+if wySpring
+    wyBias := 1
+    infoWyk := "Spring (ربيع) ⇧"
+if wySOS
+    wyBias := 1
+    infoWyk := "علامة قوة SOS"
+if wyBC
+    wyBias := -1
+    infoWyk := "ذروة شراء BC"
+if wyUpthrust
+    wyBias := -1
+    infoWyk := "Upthrust ⇩"
+if wySOW
+    wyBias := -1
+    infoWyk := "علامة ضعف SOW"
+
+// رسم الأحداث على الشارت
+if wySpring
+    label.new(bar_index, low, "Spring 🌱", yloc=yloc.belowbar, style=label.style_label_up, color=color.new(#26a69a, 10), textcolor=color.white, size=size.small)
+if wyUpthrust
+    label.new(bar_index, high, "Upthrust ⚡", yloc=yloc.abovebar, style=label.style_label_down, color=color.new(#ef5350, 10), textcolor=color.white, size=size.small)
+if wySC
+    label.new(bar_index, low, "SC ذروة بيع", yloc=yloc.belowbar, style=label.style_label_up, color=color.new(#66bb6a, 15), textcolor=color.white, size=size.tiny)
+if wyBC
+    label.new(bar_index, high, "BC ذروة شراء", yloc=yloc.abovebar, style=label.style_label_down, color=color.new(#ef9a9a, 15), textcolor=color.white, size=size.tiny)
+if wySOS
+    label.new(bar_index, low, "SOS قوة", yloc=yloc.belowbar, style=label.style_label_up, color=color.new(#2e7d32, 10), textcolor=color.white, size=size.tiny)
+if wySOW
+    label.new(bar_index, high, "SOW ضعف", yloc=yloc.abovebar, style=label.style_label_down, color=color.new(#c62828, 10), textcolor=color.white, size=size.tiny)
+
+// رسم نطاق التداول (Trading Range) على آخر شمعة
+var box  wyBox  = na
+var line wyHiLn = na
+var line wyLoLn = na
+if showWyk and barstate.islast and not na(trHigh) and not na(trLow)
+    box.delete(wyBox)
+    line.delete(wyHiLn)
+    line.delete(wyLoLn)
+    wyBox  := box.new(bar_index - wyLen, trHigh, bar_index + 8, trLow, border_color=color.new(#5c6bc0, 30), bgcolor=color.new(#5c6bc0, 93), text="نطاق تداول وايكوف", text_color=color.new(#5c6bc0, 0), text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_top)
+    wyHiLn := line.new(bar_index - wyLen, trHigh, bar_index + 8, trHigh, color=color.new(#ef5350, 20), style=line.style_dashed, width=1)
+    wyLoLn := line.new(bar_index - wyLen, trLow,  bar_index + 8, trLow,  color=color.new(#26a69a, 20), style=line.style_dashed, width=1)
+
+// ============================================================================
 //  18) النتيجة المجمّعة + لوحة المعلومات
 // ============================================================================
 // تجميع نقاط كل مدرسة (مرجّحة)
@@ -701,9 +774,10 @@ wSD     = showSD    ? sdScore    : 0
 wHarm   = showHarm  ? harmBias   : 0
 wPred   = showPred  ? predBias   : 0
 wCP     = showCP    ? cpBias     : 0
+wWyk    = showWyk   ? wyBias     : 0
 
-totalScore = wTrend*2 + wMom*1.5 + wVol + wIchi + wVolm + wCandle + wSMC*1.5 + wDiv*1.5 + wSD + wHarm + wPred*0.5 + wCP
-maxScore   = 2 + 1.5 + 1 + (showIchi?1:0) + 1 + 1 + 1.5 + 1.5 + 1 + 1 + 0.5 + 1
+totalScore = wTrend*2 + wMom*1.5 + wVol + wIchi + wVolm + wCandle + wSMC*1.5 + wDiv*1.5 + wSD + wHarm + wPred*0.5 + wCP + wWyk*1.5
+maxScore   = 2 + 1.5 + 1 + (showIchi?1:0) + 1 + 1 + 1.5 + 1.5 + 1 + 1 + 0.5 + 1 + 1.5
 scorePct   = maxScore != 0 ? totalScore / maxScore * 100 : 0
 
 verdict = scorePct >=  50 ? "شراء قوي 🟢" :
@@ -720,7 +794,7 @@ dashPosition = dashPos == "أعلى اليمين"  ? position.top_right :
                dashPos == "أسفل اليمين"  ? position.bottom_right : position.bottom_left
 
 if showDash and barstate.islast
-    var table t = table.new(dashPosition, 2, 18, bgcolor=cBgDash, border_color=color.new(#434651,40), border_width=1, frame_color=color.new(#434651,0), frame_width=1)
+    var table t = table.new(dashPosition, 2, 19, bgcolor=cBgDash, border_color=color.new(#434651,40), border_width=1, frame_color=color.new(#434651,0), frame_width=1)
     table.cell(t, 0, 0, "🏛️ محلل المدارس", text_color=cTxt, text_size=size.normal, bgcolor=color.new(#2962ff,30))
     table.cell(t, 1, 0, verdict, text_color=color.white, text_size=size.normal, bgcolor=verdictCol)
 
@@ -752,13 +826,15 @@ if showDash and barstate.islast
     table.cell(t, 1, 13, infoCorr,        text_color=color.new(#fdd835,0), text_size=size.small)
     table.cell(t, 0, 14, "التوقع",        text_color=cTxt, text_size=size.small)
     table.cell(t, 1, 14, predBias>0?"صعود متوقع ↗":predBias<0?"هبوط متوقع ↘":"—", text_color=f_sigCol(wPred), text_size=size.small)
+    table.cell(t, 0, 15, "وايكوف",        text_color=cTxt, text_size=size.small)
+    table.cell(t, 1, 15, infoWyk,         text_color=f_sigCol(wWyk), text_size=size.small)
 
-    table.cell(t, 0, 15, "RSI",  text_color=cTxt, text_size=size.small)
-    table.cell(t, 1, 15, str.tostring(rsi, "#.0"), text_color=rsi>rsiOB?cDn:rsi<rsiOS?cUp:cTxt, text_size=size.small)
-    table.cell(t, 0, 16, "النتيجة", text_color=cTxt, text_size=size.small, bgcolor=color.new(#434651,60))
-    table.cell(t, 1, 16, str.tostring(scorePct, "#") + "%", text_color=color.white, text_size=size.small, bgcolor=verdictCol)
-    table.cell(t, 0, 17, "السعر", text_color=cTxt, text_size=size.small)
-    table.cell(t, 1, 17, str.tostring(close, format.mintick), text_color=cTxt, text_size=size.small)
+    table.cell(t, 0, 16, "RSI",  text_color=cTxt, text_size=size.small)
+    table.cell(t, 1, 16, str.tostring(rsi, "#.0"), text_color=rsi>rsiOB?cDn:rsi<rsiOS?cUp:cTxt, text_size=size.small)
+    table.cell(t, 0, 17, "النتيجة", text_color=cTxt, text_size=size.small, bgcolor=color.new(#434651,60))
+    table.cell(t, 1, 17, str.tostring(scorePct, "#") + "%", text_color=color.white, text_size=size.small, bgcolor=verdictCol)
+    table.cell(t, 0, 18, "السعر", text_color=cTxt, text_size=size.small)
+    table.cell(t, 1, 18, str.tostring(close, format.mintick), text_color=cTxt, text_size=size.small)
 
 // ============================================================================
 //  التنبيهات  —  Alerts
@@ -773,6 +849,8 @@ alertcondition(bullDiv,    "دايفرجنس إيجابي",    "📈 دايفر�
 alertcondition(bearDiv,    "دايفرجنس سلبي",      "📉 دايفرجنس سلبي: تباعد هبوطي بين السعر و RSI")
 alertcondition(corrEndUp,  "نهاية تصحيح صاعد",   "✅ انتهى التصحيح واستأنف الصعود")
 alertcondition(corrEndDn,  "نهاية تصحيح هابط",   "✅ انتهى التصحيح واستأنف الهبوط")
+alertcondition(wySpring,   "وايكوف Spring",      "🌱 وايكوف: Spring اختراق كاذب لأسفل (إشارة صعود)")
+alertcondition(wyUpthrust, "وايكوف Upthrust",    "⚡ وايكوف: Upthrust اختراق كاذب لأعلى (إشارة هبوط)")
 
 plotshape(buySignal  ? low  : na, "إشارة شراء", shape.labelup,   location.belowbar, cUp, text="شراء",  textcolor=color.white, size=size.small)
 plotshape(sellSignal ? high : na, "إشارة بيع",  shape.labeldown, location.abovebar, cDn, text="بيع",   textcolor=color.white, size=size.small)
