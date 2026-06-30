@@ -713,24 +713,60 @@ wySOW      = showWyk and close < trLow  and close < open and wyHiVol and wideBar
 
 var int wyBias = 0
 var string infoWyk = "—"
+// آلة حالة مراحل وايكوف:  wyType = تجميع/تصريف ، wyPhase: 1=A 2=B 3=C 4=D 5=E
+var string wyType  = ""
+var int    wyPhase = 0
+
+// المرحلة A — توقف الاتجاه السابق (ذروة الحجم)
 if wySC
-    wyBias := 1
+    wyType  := "تجميع"
+    wyPhase := 1
+    wyBias  := 1
     infoWyk := "ذروة بيع SC"
-if wySpring
-    wyBias := 1
-    infoWyk := "Spring (ربيع) ⇧"
-if wySOS
-    wyBias := 1
-    infoWyk := "علامة قوة SOS"
 if wyBC
-    wyBias := -1
+    wyType  := "تصريف"
+    wyPhase := 1
+    wyBias  := -1
     infoWyk := "ذروة شراء BC"
+// المرحلة B — البناء (بعد A وقبل أحداث الاختبار)
+if wyPhase == 1 and not wySC and not wyBC
+    wyPhase := 2
+    infoWyk := "بناء السبب (B)"
+// المرحلة C — الاختبار النهائي (Spring/Upthrust)
+if wySpring
+    wyType  := "تجميع"
+    wyPhase := 3
+    wyBias  := 1
+    infoWyk := "Spring (ربيع) ⇧"
 if wyUpthrust
-    wyBias := -1
+    wyType  := "تصريف"
+    wyPhase := 3
+    wyBias  := -1
     infoWyk := "Upthrust ⇩"
+// المرحلة D — علامات القوة/الضعف داخل النطاق
+if wySOS
+    wyType  := "تجميع"
+    wyPhase := 4
+    wyBias  := 1
+    infoWyk := "علامة قوة SOS"
 if wySOW
-    wyBias := -1
+    wyType  := "تصريف"
+    wyPhase := 4
+    wyBias  := -1
     infoWyk := "علامة ضعف SOW"
+// المرحلة E — مغادرة النطاق وبدء الاتجاه
+if wyPhase >= 3 and wyType == "تجميع" and close > trHigh
+    wyPhase := 5
+    wyBias  := 1
+    infoWyk := "بداية ترند صاعد (E)"
+if wyPhase >= 3 and wyType == "تصريف" and close < trLow
+    wyPhase := 5
+    wyBias  := -1
+    infoWyk := "بداية ترند هابط (E)"
+
+// نص المرحلة الحالية (تجميع/تصريف • الحرف)
+phLetter = wyPhase == 1 ? "A" : wyPhase == 2 ? "B" : wyPhase == 3 ? "C" : wyPhase == 4 ? "D" : wyPhase == 5 ? "E" : "—"
+wyPhaseTxt = wyPhase == 0 ? "—" : wyType + " • " + phLetter
 
 // رسم الأحداث على الشارت
 if wySpring
@@ -754,7 +790,8 @@ if showWyk and barstate.islast and not na(trHigh) and not na(trLow)
     box.delete(wyBox)
     line.delete(wyHiLn)
     line.delete(wyLoLn)
-    wyBox  := box.new(bar_index - wyLen, trHigh, bar_index + 8, trLow, border_color=color.new(#5c6bc0, 30), bgcolor=color.new(#5c6bc0, 93), text="نطاق تداول وايكوف", text_color=color.new(#5c6bc0, 0), text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_top)
+    wyBoxTxt = wyPhase == 0 ? "نطاق تداول وايكوف" : "وايكوف — " + wyPhaseTxt
+    wyBox  := box.new(bar_index - wyLen, trHigh, bar_index + 8, trLow, border_color=color.new(#5c6bc0, 30), bgcolor=color.new(#5c6bc0, 93), text=wyBoxTxt, text_color=color.new(#5c6bc0, 0), text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_top)
     wyHiLn := line.new(bar_index - wyLen, trHigh, bar_index + 8, trHigh, color=color.new(#ef5350, 20), style=line.style_dashed, width=1)
     wyLoLn := line.new(bar_index - wyLen, trLow,  bar_index + 8, trLow,  color=color.new(#26a69a, 20), style=line.style_dashed, width=1)
 
@@ -794,7 +831,7 @@ dashPosition = dashPos == "أعلى اليمين"  ? position.top_right :
                dashPos == "أسفل اليمين"  ? position.bottom_right : position.bottom_left
 
 if showDash and barstate.islast
-    var table t = table.new(dashPosition, 2, 19, bgcolor=cBgDash, border_color=color.new(#434651,40), border_width=1, frame_color=color.new(#434651,0), frame_width=1)
+    var table t = table.new(dashPosition, 2, 20, bgcolor=cBgDash, border_color=color.new(#434651,40), border_width=1, frame_color=color.new(#434651,0), frame_width=1)
     table.cell(t, 0, 0, "🏛️ محلل المدارس", text_color=cTxt, text_size=size.normal, bgcolor=color.new(#2962ff,30))
     table.cell(t, 1, 0, verdict, text_color=color.white, text_size=size.normal, bgcolor=verdictCol)
 
@@ -828,13 +865,15 @@ if showDash and barstate.islast
     table.cell(t, 1, 14, predBias>0?"صعود متوقع ↗":predBias<0?"هبوط متوقع ↘":"—", text_color=f_sigCol(wPred), text_size=size.small)
     table.cell(t, 0, 15, "وايكوف",        text_color=cTxt, text_size=size.small)
     table.cell(t, 1, 15, infoWyk,         text_color=f_sigCol(wWyk), text_size=size.small)
+    table.cell(t, 0, 16, "مرحلة وايكوف",   text_color=cTxt, text_size=size.small)
+    table.cell(t, 1, 16, wyPhaseTxt,       text_color=f_sigCol(wWyk), text_size=size.small)
 
-    table.cell(t, 0, 16, "RSI",  text_color=cTxt, text_size=size.small)
-    table.cell(t, 1, 16, str.tostring(rsi, "#.0"), text_color=rsi>rsiOB?cDn:rsi<rsiOS?cUp:cTxt, text_size=size.small)
-    table.cell(t, 0, 17, "النتيجة", text_color=cTxt, text_size=size.small, bgcolor=color.new(#434651,60))
-    table.cell(t, 1, 17, str.tostring(scorePct, "#") + "%", text_color=color.white, text_size=size.small, bgcolor=verdictCol)
-    table.cell(t, 0, 18, "السعر", text_color=cTxt, text_size=size.small)
-    table.cell(t, 1, 18, str.tostring(close, format.mintick), text_color=cTxt, text_size=size.small)
+    table.cell(t, 0, 17, "RSI",  text_color=cTxt, text_size=size.small)
+    table.cell(t, 1, 17, str.tostring(rsi, "#.0"), text_color=rsi>rsiOB?cDn:rsi<rsiOS?cUp:cTxt, text_size=size.small)
+    table.cell(t, 0, 18, "النتيجة", text_color=cTxt, text_size=size.small, bgcolor=color.new(#434651,60))
+    table.cell(t, 1, 18, str.tostring(scorePct, "#") + "%", text_color=color.white, text_size=size.small, bgcolor=verdictCol)
+    table.cell(t, 0, 19, "السعر", text_color=cTxt, text_size=size.small)
+    table.cell(t, 1, 19, str.tostring(close, format.mintick), text_color=cTxt, text_size=size.small)
 
 // ============================================================================
 //  التنبيهات  —  Alerts
