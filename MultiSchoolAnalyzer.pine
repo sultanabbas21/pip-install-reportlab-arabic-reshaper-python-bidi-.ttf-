@@ -627,7 +627,7 @@ var array<label> cpLab   = array.new<label>()
 var string infoPattern = "—"
 var int    cpBias = 0
 
-if showCP and gStruct and barstate.islast
+if showCP and barstate.islast
     while array.size(cpLines) > 0
         line.delete(array.shift(cpLines))
     while array.size(cpLab) > 0
