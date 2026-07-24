@@ -25,6 +25,8 @@ GRP_GEN  = "⚙️ عام"
 showDash    = input.bool(true,  "إظهار لوحة المعلومات",      group=GRP_GEN)
 dashPos     = input.string("أعلى اليمين", "موضع اللوحة", options=["أعلى اليمين","أعلى اليسار","أسفل اليمين","أسفل اليسار"], group=GRP_GEN)
 themeDark   = input.bool(true,  "ثيم داكن",                   group=GRP_GEN)
+displayMode = input.string("نظيف", "وضع العرض على الشارت", options=["نظيف","متوسط","كامل"], group=GRP_GEN, tooltip="نظيف = إشارات كول/بوت فقط • متوسط = + الأحداث الرئيسية • كامل = كل شيء")
+eventsBack  = input.int(50, "إظهار الأحداث في آخر (عدد شموع)", minval=10, group=GRP_GEN)
 
 // ألوان الثيم
 cUp    = color.new(#26a69a, 0)
@@ -32,6 +34,14 @@ cDn    = color.new(#ef5350, 0)
 cNeu   = color.new(#787b86, 0)
 cTxt   = themeDark ? color.white : color.black
 cBgDash= themeDark ? color.new(#1e222d, 10) : color.new(#ffffff, 10)
+
+// بوابات التنظيف: تتحكم في كثافة الرسومات لتفادي ازدحام الشارت
+_clean    = displayMode == "نظيف"
+_full     = displayMode == "كامل"
+recentBar = bar_index >= last_bar_index - eventsBack
+gMinor    = _full and recentBar          // أحداث ثانوية (شموع فردية/حجم/تشبع)
+gMajor    = (not _clean) and recentBar   // أحداث رئيسية (BOS/دايفرجنس/وايكوف/تصحيح)
+gStruct   = not _clean                   // رسومات بنيوية على آخر شمعة (موجات/هارمونك/تنبؤ)
 
 // ============================================================================
 //  1) الاتجاه  —  Trend (EMA Ribbon)
@@ -83,8 +93,8 @@ momNorm  = momScore > 0 ? 1 : momScore < 0 ? -1 : 0
 // إشارات تشبع على الشارت (نحسب التقاطعات في متغيرات عامة لضمان تنفيذها كل شمعة)
 rsiCrossDn = ta.crossunder(rsi, rsiOB)
 rsiCrossUp = ta.crossover(rsi, rsiOS)
-plotshape(showMom and rsiCrossDn ? high : na, "تشبع شرائي", shape.triangledown, location.abovebar, color.new(#ef5350,0), size=size.tiny)
-plotshape(showMom and rsiCrossUp ? low : na,  "تشبع بيعي",  shape.triangleup,   location.belowbar, color.new(#26a69a,0), size=size.tiny)
+plotshape(showMom and gMinor and rsiCrossDn ? high : na, "تشبع شرائي", shape.triangledown, location.abovebar, color.new(#ef5350,0), size=size.tiny)
+plotshape(showMom and gMinor and rsiCrossUp ? low : na,  "تشبع بيعي",  shape.triangleup,   location.belowbar, color.new(#26a69a,0), size=size.tiny)
 
 // ============================================================================
 //  3) التقلب  —  Volatility (Bollinger Bands + ATR)
@@ -207,8 +217,8 @@ obvRising = obv > ta.sma(obv, 20)
 volScoreV = (volSpike and close > open ? 1 : 0) + (obvRising ? 1 : -1)
 volNorm   = volScoreV > 0 ? 1 : volScoreV < 0 ? -1 : 0
 
-plotshape(showVol and volSpike and close > open ? low : na, "حجم شراء", shape.circle, location.belowbar, color.new(#26a69a,0), size=size.tiny)
-plotshape(showVol and volSpike and close < open ? high : na, "حجم بيع", shape.circle, location.abovebar, color.new(#ef5350,0), size=size.tiny)
+plotshape(showVol and gMinor and volSpike and close > open ? low : na, "حجم شراء", shape.circle, location.belowbar, color.new(#26a69a,0), size=size.tiny)
+plotshape(showVol and gMinor and volSpike and close < open ? high : na, "حجم بيع", shape.circle, location.abovebar, color.new(#ef5350,0), size=size.tiny)
 
 // ============================================================================
 //  8) نماذج الشموع  —  Candlestick Patterns
@@ -229,7 +239,7 @@ doji       = rngTot > 0 and body <= rngTot * 0.1
 
 candleScore = (bullEngulf or hammer ? 1 : 0) + (bearEngulf or shootStar ? -1 : 0)
 
-if showCandle
+if showCandle and gMinor
     if bullEngulf
         label.new(bar_index, low, "ابتلاع\nشرائي", yloc=yloc.belowbar, style=label.style_label_up, color=color.new(#26a69a,20), textcolor=color.white, size=size.tiny)
     if bearEngulf
@@ -267,9 +277,9 @@ if bosUp
 if bosDn
     smcBias := -1
 
-if showSMC and bosUp
+if showSMC and gMajor and bosUp
     label.new(bar_index, high, "BOS▲", yloc=yloc.abovebar, style=label.style_label_down, color=color.new(#26a69a,10), textcolor=color.white, size=size.small)
-if showSMC and bosDn
+if showSMC and gMajor and bosDn
     label.new(bar_index, low, "BOS▼", yloc=yloc.belowbar, style=label.style_label_up, color=color.new(#ef5350,10), textcolor=color.white, size=size.small)
 
 // ============================================================================
@@ -310,7 +320,7 @@ f_near(float v, float t, float tol) => v >= t * (1 - tol) and v <= t * (1 + tol)
 
 // رسم خطوط الزجزاج التي تصل نقاط السوينج
 var array<line> zzLines = array.new<line>()
-if showZig and barstate.islast
+if showZig and gStruct and barstate.islast
     while array.size(zzLines) > 0
         line.delete(array.shift(zzLines))
     if array.size(swP) >= 2
@@ -360,13 +370,13 @@ if not na(phD)
     prevPHp := curP
     prevPHo := curO
 
-if showDiv and bullDiv
+if showDiv and gMajor and bullDiv
     label.new(bar_index - divLB, low[divLB], "📈 دايفرجنس\nإيجابي", yloc=yloc.belowbar, style=label.style_label_up, color=color.new(#26a69a, 15), textcolor=color.white, size=size.tiny)
-if showDiv and bearDiv
+if showDiv and gMajor and bearDiv
     label.new(bar_index - divLB, high[divLB], "📉 دايفرجنس\nسلبي", yloc=yloc.abovebar, style=label.style_label_down, color=color.new(#ef5350, 15), textcolor=color.white, size=size.tiny)
-if showDiv and hidBull
+if showDiv and gMajor and _full and hidBull
     label.new(bar_index - divLB, low[divLB], "▲ مخفي", yloc=yloc.belowbar, style=label.style_label_up, color=color.new(#66bb6a, 35), textcolor=color.white, size=size.tiny)
-if showDiv and hidBear
+if showDiv and gMajor and _full and hidBear
     label.new(bar_index - divLB, high[divLB], "▼ مخفي", yloc=yloc.abovebar, style=label.style_label_down, color=color.new(#ef9a9a, 35), textcolor=color.white, size=size.tiny)
 
 var int divBias = 0
@@ -432,7 +442,7 @@ showWave = input.bool(true, "تفعيل ترقيم الموجات", group=GRP_WV
 
 var array<label> wvLab = array.new<label>()
 var string infoWave = "—"
-if showWave and barstate.islast
+if showWave and gStruct and barstate.islast
     while array.size(wvLab) > 0
         label.delete(array.shift(wvLab))
     n = array.size(swP)
@@ -459,7 +469,7 @@ var array<label> harmLab   = array.new<label>()
 var string infoHarmonic = "—"
 var int    harmBias = 0
 
-if showHarm and barstate.islast
+if showHarm and gStruct and barstate.islast
     while array.size(harmLines) > 0
         line.delete(array.shift(harmLines))
     while array.size(harmLab) > 0
@@ -519,7 +529,7 @@ var array<line>  predLines = array.new<line>()
 var array<label> predLab   = array.new<label>()
 var int predBias = 0
 
-if showPred and barstate.islast
+if showPred and gStruct and barstate.islast
     while array.size(predLines) > 0
         line.delete(array.shift(predLines))
     while array.size(predLab) > 0
@@ -568,7 +578,8 @@ if showCorr and not na(phZ) and trendUp
     inCorrUp := true
     inCorrDn := false
     infoCorr := "بدأ تصحيح هابط ⤵"
-    label.new(bar_index - zzLen, phZ, "بداية تصحيح ⤵", yloc=yloc.abovebar, style=label.style_label_down, color=color.new(#ffa726, 10), textcolor=color.white, size=size.tiny)
+    if gMajor
+        label.new(bar_index - zzLen, phZ, "بداية تصحيح ⤵", yloc=yloc.abovebar, style=label.style_label_down, color=color.new(#ffa726, 10), textcolor=color.white, size=size.tiny)
 
 // بدء تصحيح صاعد: قاع جديد أثناء اتجاه هابط
 if showCorr and not na(plZ) and trendDn
@@ -578,7 +589,8 @@ if showCorr and not na(plZ) and trendDn
     inCorrDn := true
     inCorrUp := false
     infoCorr := "بدأ تصحيح صاعد ⤴"
-    label.new(bar_index - zzLen, plZ, "بداية تصحيح ⤴", yloc=yloc.belowbar, style=label.style_label_up, color=color.new(#ffa726, 10), textcolor=color.white, size=size.tiny)
+    if gMajor
+        label.new(bar_index - zzLen, plZ, "بداية تصحيح ⤴", yloc=yloc.belowbar, style=label.style_label_up, color=color.new(#ffa726, 10), textcolor=color.white, size=size.tiny)
 
 // منطقة نهاية التصحيح المتوقعة (فيبو 0.5–0.618 من الموجة)
 if showCorr and barstate.islast and not na(corrHigh) and not na(corrLow) and (inCorrUp or inCorrDn)
@@ -615,7 +627,7 @@ var array<label> cpLab   = array.new<label>()
 var string infoPattern = "—"
 var int    cpBias = 0
 
-if showCP and barstate.islast
+if showCP and gStruct and barstate.islast
     while array.size(cpLines) > 0
         line.delete(array.shift(cpLines))
     while array.size(cpLab) > 0
@@ -768,18 +780,18 @@ if wyPhase >= 3 and wyType == "تصريف" and close < trLow
 phLetter = wyPhase == 1 ? "A" : wyPhase == 2 ? "B" : wyPhase == 3 ? "C" : wyPhase == 4 ? "D" : wyPhase == 5 ? "E" : "—"
 wyPhaseTxt = wyPhase == 0 ? "—" : wyType + " • " + phLetter
 
-// رسم الأحداث على الشارت
-if wySpring
+// رسم الأحداث على الشارت (محكومة ببوابة التنظيف)
+if wySpring and gMajor
     label.new(bar_index, low, "Spring 🌱", yloc=yloc.belowbar, style=label.style_label_up, color=color.new(#26a69a, 10), textcolor=color.white, size=size.small)
-if wyUpthrust
+if wyUpthrust and gMajor
     label.new(bar_index, high, "Upthrust ⚡", yloc=yloc.abovebar, style=label.style_label_down, color=color.new(#ef5350, 10), textcolor=color.white, size=size.small)
-if wySC
+if wySC and gMajor and _full
     label.new(bar_index, low, "SC ذروة بيع", yloc=yloc.belowbar, style=label.style_label_up, color=color.new(#66bb6a, 15), textcolor=color.white, size=size.tiny)
-if wyBC
+if wyBC and gMajor and _full
     label.new(bar_index, high, "BC ذروة شراء", yloc=yloc.abovebar, style=label.style_label_down, color=color.new(#ef9a9a, 15), textcolor=color.white, size=size.tiny)
-if wySOS
+if wySOS and gMajor and _full
     label.new(bar_index, low, "SOS قوة", yloc=yloc.belowbar, style=label.style_label_up, color=color.new(#2e7d32, 10), textcolor=color.white, size=size.tiny)
-if wySOW
+if wySOW and gMajor and _full
     label.new(bar_index, high, "SOW ضعف", yloc=yloc.abovebar, style=label.style_label_down, color=color.new(#c62828, 10), textcolor=color.white, size=size.tiny)
 
 // رسم نطاق التداول (Trading Range) على آخر شمعة
@@ -880,15 +892,35 @@ if showDash and barstate.islast
 // ============================================================================
 GRP_SIG = "🎯 إشارة كول/بوت"
 showCallPut = input.bool(true,  "إظهار إشارة كول/بوت", group=GRP_SIG)
-sigStrength = input.int(40, "قوة الإشارة المطلوبة %", minval=20, maxval=90, group=GRP_SIG)
-sigConfirm  = input.bool(true,  "تأكيد مع اتجاه المتوسط EMA200", group=GRP_SIG)
+sigMode     = input.string("مبكّر", "نمط الإشارة", options=["مبكّر","مؤكّد"], group=GRP_SIG, tooltip="مبكّر = انعكاس سعري مبكّر (أقل تأخيراً) • مؤكّد = عبور النتيجة المجمّعة (أدقّ وأبطأ)")
+sigStrength = input.int(35, "قوة الإشارة % (للنمط المؤكّد)", minval=15, maxval=90, group=GRP_SIG)
+sigConfirm  = input.bool(true,  "فلتر الاتجاه العام (EMA200)", group=GRP_SIG)
+sigCooldown = input.int(6, "فترة تهدئة بين الإشارات (شمعة)", minval=0, group=GRP_SIG)
 
-// الإشارة عند تجاوز النتيجة المجمّعة لعتبة القوة (تُحسب في متغيّر عام)
-callRaw = ta.crossover(scorePct,  sigStrength)
-putRaw  = ta.crossunder(scorePct, -sigStrength)
-// تأكيد اختياري: كول فوق EMA200 وبوت تحته
-callSig = callRaw and (not sigConfirm or close > ema3)
-putSig  = putRaw  and (not sigConfirm or close < ema3)
+// ── النمط المبكّر: انعكاس سعري عند دعم/مقاومة أو تشبّع + شمعة تأكيد + حجم ──
+atSupport = close <= bbLower or rsi < rsiOS or (not na(demTop) and low <= demTop and close >= demBot) or wySpring
+atResist  = close >= bbUpper or rsi > rsiOB or (not na(supBot) and high >= supBot and close <= supTop) or wyUpthrust
+bullBar   = close > open and close > (high + low) / 2 and close > close[1]
+bearBar   = close < open and close < (high + low) / 2 and close < close[1]
+volOK     = volume > volAvg
+earlyCall = atSupport and bullBar and rsi > rsi[1] and volOK
+earlyPut  = atResist  and bearBar and rsi < rsi[1] and volOK
+
+// ── النمط المؤكّد: عبور النتيجة المجمّعة للعتبة (يُحسب دائماً كمتغيّر عام) ──
+confCall = ta.crossover(scorePct,  sigStrength)
+confPut  = ta.crossunder(scorePct, -sigStrength)
+
+rawCall = sigMode == "مبكّر" ? earlyCall : confCall
+rawPut  = sigMode == "مبكّر" ? earlyPut  : confPut
+
+// فلتر الاتجاه + تهدئة مشتركة لمنع تكرار الإشارات المتأخرة
+var int lastSigBar = -1000
+trendOKc = not sigConfirm or close > ema3
+trendOKp = not sigConfirm or close < ema3
+callSig = rawCall and trendOKc and (bar_index - lastSigBar > sigCooldown)
+putSig  = rawPut  and trendOKp and (bar_index - lastSigBar > sigCooldown)
+if callSig or putSig
+    lastSigBar := bar_index
 
 plotshape(showCallPut and callSig ? low  : na, "🟢 كول CALL", shape.labelup,   location.belowbar, color.new(#00c853, 0), text="كول 📈", textcolor=color.white, size=size.large)
 plotshape(showCallPut and putSig  ? high : na, "🔴 بوت PUT",  shape.labeldown, location.abovebar, color.new(#d50000, 0), text="بوت 📉", textcolor=color.white, size=size.large)
@@ -911,5 +943,5 @@ alertcondition(corrEndDn,  "نهاية تصحيح هابط",   "✅ انتهى �
 alertcondition(wySpring,   "وايكوف Spring",      "🌱 وايكوف: Spring اختراق كاذب لأسفل (إشارة صعود)")
 alertcondition(wyUpthrust, "وايكوف Upthrust",    "⚡ وايكوف: Upthrust اختراق كاذب لأعلى (إشارة هبوط)")
 
-plotshape(buySignal  ? low  : na, "إشارة شراء", shape.labelup,   location.belowbar, cUp, text="شراء",  textcolor=color.white, size=size.small)
-plotshape(sellSignal ? high : na, "إشارة بيع",  shape.labeldown, location.abovebar, cDn, text="بيع",   textcolor=color.white, size=size.small)
+plotshape(buySignal  and gMajor ? low  : na, "إشارة شراء", shape.labelup,   location.belowbar, cUp, text="شراء",  textcolor=color.white, size=size.small)
+plotshape(sellSignal and gMajor ? high : na, "إشارة بيع",  shape.labeldown, location.abovebar, cDn, text="بيع",   textcolor=color.white, size=size.small)
