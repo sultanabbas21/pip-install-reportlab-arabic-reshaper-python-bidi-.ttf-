@@ -876,10 +876,30 @@ if showDash and barstate.islast
     table.cell(t, 1, 19, str.tostring(close, format.mintick), text_color=cTxt, text_size=size.small)
 
 // ============================================================================
+//  🎯 إشارة كول / بوت  —  CALL / PUT Signal
+// ============================================================================
+GRP_SIG = "🎯 إشارة كول/بوت"
+showCallPut = input.bool(true,  "إظهار إشارة كول/بوت", group=GRP_SIG)
+sigStrength = input.int(40, "قوة الإشارة المطلوبة %", minval=20, maxval=90, group=GRP_SIG)
+sigConfirm  = input.bool(true,  "تأكيد مع اتجاه المتوسط EMA200", group=GRP_SIG)
+
+// الإشارة عند تجاوز النتيجة المجمّعة لعتبة القوة (تُحسب في متغيّر عام)
+callRaw = ta.crossover(scorePct,  sigStrength)
+putRaw  = ta.crossunder(scorePct, -sigStrength)
+// تأكيد اختياري: كول فوق EMA200 وبوت تحته
+callSig = callRaw and (not sigConfirm or close > ema3)
+putSig  = putRaw  and (not sigConfirm or close < ema3)
+
+plotshape(showCallPut and callSig ? low  : na, "🟢 كول CALL", shape.labelup,   location.belowbar, color.new(#00c853, 0), text="كول 📈", textcolor=color.white, size=size.large)
+plotshape(showCallPut and putSig  ? high : na, "🔴 بوت PUT",  shape.labeldown, location.abovebar, color.new(#d50000, 0), text="بوت 📉", textcolor=color.white, size=size.large)
+
+// ============================================================================
 //  التنبيهات  —  Alerts
 // ============================================================================
 buySignal  = ta.crossover(scorePct,  20)
 sellSignal = ta.crossunder(scorePct, -20)
+alertcondition(callSig,    "إشارة كول CALL",     "🟢 كول (CALL): توافق صعودي قوي للمدارس")
+alertcondition(putSig,     "إشارة بوت PUT",      "🔴 بوت (PUT): توافق هبوطي قوي للمدارس")
 alertcondition(buySignal,  "إشارة شراء مجمّعة",  "🟢 إشارة شراء: تجمّع مدارس التحليل على الصعود")
 alertcondition(sellSignal, "إشارة بيع مجمّعة",   "🔴 إشارة بيع: تجمّع مدارس التحليل على الهبوط")
 alertcondition(bosUp,      "كسر هيكل صاعد BOS",  "BOS▲ كسر هيكل صاعد")
